@@ -4,13 +4,22 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 
-from app.tools.refund_tools import get_order
+from app.tools.refund_tools import (
+    get_order,
+    check_refund_policy,
+    create_refund
+)
 
 load_dotenv()
 
 client = Groq(
     api_key=os.getenv("GROQ_API_KEY")
 )
+
+
+# -------------------------
+# Tool Definitions
+# -------------------------
 
 get_order_tool = {
     "type": "function",
@@ -31,6 +40,74 @@ get_order_tool = {
 }
 
 
+check_refund_policy_tool = {
+    "type": "function",
+    "function": {
+        "name": "check_refund_policy",
+        "description": "Check whether an order is eligible for a refund.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order": {
+                    "type": "object",
+                    "description": "Order details"
+                }
+            },
+            "required": ["order"],
+        },
+    },
+}
+
+
+create_refund_tool = {
+    "type": "function",
+    "function": {
+        "name": "create_refund",
+        "description": "Create a refund for an eligible order.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "order_id": {
+                    "type": "string",
+                    "description": "The order ID"
+                },
+                "amount": {
+                    "type": "number",
+                    "description": "Refund amount"
+                }
+            },
+            "required": ["order_id", "amount"],
+        },
+    },
+}
+
+
+# -------------------------
+# Available Tools
+# -------------------------
+
+tools = [
+    get_order_tool,
+    check_refund_policy_tool,
+    create_refund_tool
+]
+
+
+# -------------------------
+# Tool Functions
+# -------------------------
+
+tool_functions = {
+    "get_order": get_order,
+    "check_refund_policy": check_refund_policy,
+    "create_refund": create_refund
+}
+
+
+# -------------------------
+# Conversation
+# -------------------------
+
 messages = [
     {
         "role": "user",
@@ -38,26 +115,58 @@ messages = [
     }
 ]
 
+
+# -------------------------
+# First LLM Call
+# -------------------------
+
 response = client.chat.completions.create(
     model="openai/gpt-oss-20b",
     messages=messages,
-    tools=[get_order_tool],
+    tools=tools,
     tool_choice="auto"
 )
 
-tool_call = response.choices[0].message.tool_calls[0]
 
-tool_name = tool_call.function.name
+# -------------------------
+# Agent Loop
+# -------------------------
 
-arguments = tool_call.function.arguments
+while True:
 
-args = json.loads(arguments)
+    message = response.choices[0].message
 
-result = get_order(
-    args["order_id"]
-)
+    if not message.tool_calls:
+        print("\nFinal Answer:", message.content)
+        break
 
+    messages.append(message)
 
-print("Tool:", tool_name)
-print("Arguments:", args)
-print("Result:", result)
+    for tool_call in message.tool_calls:
+
+        tool_name = tool_call.function.name
+        arguments = tool_call.function.arguments
+
+        args = json.loads(arguments)
+
+        print("\nTool:", tool_name)
+        print("Arguments:", args)
+
+        tool_function = tool_functions[tool_name]
+
+        result = tool_function(**args)
+
+        print("Result:", result)
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": json.dumps(result)
+        })
+
+    response = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=messages,
+        tools=tools,
+        tool_choice="auto"
+    )
