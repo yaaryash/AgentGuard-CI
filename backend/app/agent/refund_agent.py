@@ -3,7 +3,7 @@ import json
 
 from dotenv import load_dotenv
 from groq import Groq
-
+from app.services.trace import log_event
 from app.tools.refund_tools import (
     get_order,
     check_refund_policy,
@@ -110,11 +110,21 @@ tool_functions = {
 
 messages = [
     {
+        "role": "system",
+        "content": (
+            "You are a customer support refund agent. "
+            "Always use the available tools to determine refund eligibility. "
+            "Never invent, infer, or assume refund policies. "
+            "You must call check_refund_policy after getting order details. "
+            "Only call create_refund if check_refund_policy returns True. "
+            "If the refund is not eligible, do not call create_refund."
+        )
+    },
+    {
         "role": "user",
-        "content": "I want a refund for order 101"
+        "content": "I want a refund for order 102"
     }
 ]
-
 
 # -------------------------
 # First LLM Call
@@ -157,6 +167,12 @@ while True:
         result = tool_function(**args)
 
         print("Result:", result)
+
+        log_event(
+            tool_name,
+            args,
+            result
+        )
 
         messages.append({
             "role": "tool",
