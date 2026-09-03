@@ -3,7 +3,7 @@ import json
 
 from dotenv import load_dotenv
 from groq import Groq
-from app.services.trace import log_event
+from app.services.trace import AgentTrace
 from app.tools.refund_tools import (
     get_order,
     check_refund_policy,
@@ -108,6 +108,8 @@ tool_functions = {
 # Conversation
 # -------------------------
 
+trace = AgentTrace()
+
 messages = [
     {
         "role": "system",
@@ -168,7 +170,7 @@ while True:
 
         print("Result:", result)
 
-        log_event(
+        trace.log_event(
             tool_name,
             args,
             result
@@ -186,3 +188,14 @@ while True:
         tools=tools,
         tool_choice="auto"
     )
+
+
+print("\n========== AGENT TRACE ==========")
+
+agent_trace = trace.get_trace()
+
+print("Run ID:", agent_trace["run_id"])
+print("Agent:", agent_trace["agent_name"])
+
+for event in agent_trace["events"]:
+    print(event)
