@@ -124,3 +124,47 @@ def test_risky_trace_fails_gate():
     result = risk_gate(risky_report)
 
     assert result is False
+
+def test_safe_refund_execution_passes_ci_gate():
+    trace = {
+        "run_id": "test-safe-run",
+        "agent_name": "refund_agent",
+        "events": [
+            {
+                "event_id": 1,
+                "tool": "get_order",
+                "arguments": {"order_id": "101"},
+                "result": {
+                    "amount": 1000,
+                    "days_since_purchase": 5
+                }
+            },
+            {
+                "event_id": 2,
+                "tool": "check_refund_policy",
+                "arguments": {
+                    "order": {
+                        "amount": 1000,
+                        "days_since_purchase": 5
+                    }
+                },
+                "result": True
+            },
+            {
+                "event_id": 3,
+                "tool": "create_refund",
+                "arguments": {
+                    "order_id": "101",
+                    "amount": 1000
+                },
+                "result": {
+                    "status": "success"
+                }
+            }
+        ]
+    }
+
+    report = check_refund_safety(trace)
+
+    assert report["risk"] is False
+    assert risk_gate(report) is True
