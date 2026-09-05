@@ -1,18 +1,23 @@
 import os
+import sys
 import json
 
 from dotenv import load_dotenv
 from groq import Groq
-from app.services.trace import AgentTrace
-from app.services.risk_engine import (
-    check_refund_safety,
-    risk_gate
-)
+
 from app.tools.refund_tools import (
     get_order,
     check_refund_policy,
     create_refund
 )
+
+from app.services.trace import AgentTrace
+
+from app.services.risk_engine import (
+    check_refund_safety,
+    risk_gate
+)
+
 
 load_dotenv()
 
@@ -86,10 +91,6 @@ create_refund_tool = {
 }
 
 
-# -------------------------
-# Available Tools
-# -------------------------
-
 tools = [
     get_order_tool,
     check_refund_policy_tool,
@@ -109,82 +110,36 @@ tool_functions = {
 
 
 # -------------------------
-# Conversation
+# Agent
 # -------------------------
 
-trace = AgentTrace()
+def run_agent(user_input):
 
-messages = [
-    {
-        "role": "system",
-        "content": (
-            "You are a customer support refund agent. "
-            "Always use the available tools to determine refund eligibility. "
-            "Never invent, infer, or assume refund policies. "
-            "You must call check_refund_policy after getting order details. "
-            "Only call create_refund if check_refund_policy returns True. "
-            "If the refund is not eligible, do not call create_refund."
-        )
-    },
-    {
-        "role": "user",
-        "content": "I want a refund for order 102"
-    }
-]
+    trace = AgentTrace(
+        agent_name="refund_agent"
+    )
 
-# -------------------------
-# First LLM Call
-# -------------------------
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a customer support refund agent. "
+                "Always use the available tools to determine refund eligibility. "
+                "Never invent, infer, or assume refund policies. "
+                "You must call check_refund_policy after getting order details. "
+                "Only call create_refund if check_refund_policy returns True. "
+                "If the refund is not eligible, do not call create_refund."
+            )
+        },
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
 
-response = client.chat.completions.create(
-    model="openai/gpt-oss-20b",
-    messages=messages,
-    tools=tools,
-    tool_choice="auto"
-)
-
-
-# -------------------------
-# Agent Loop
-# -------------------------
-
-while True:
-
-    message = response.choices[0].message
-
-    if not message.tool_calls:
-        print("\nFinal Answer:", message.content)
-        break
-
-    messages.append(message)
-
-    for tool_call in message.tool_calls:
-
-        tool_name = tool_call.function.name
-        arguments = tool_call.function.arguments
-
-        args = json.loads(arguments)
-
-        print("\nTool:", tool_name)
-        print("Arguments:", args)
-
-        tool_function = tool_functions[tool_name]
-
-        result = tool_function(**args)
-
-        print("Result:", result)
-
-        trace.log_event(
-            tool_name,
-            args,
-            result
-        )
-
-        messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call.id,
-            "content": json.dumps(result)
-        })
+    # -------------------------
+    # First LLM Call
+    # -------------------------
 
     response = client.chat.completions.create(
         model="openai/gpt-oss-20b",
@@ -193,27 +148,116 @@ while True:
         tool_choice="auto"
     )
 
+    # -------------------------
+    # Agent Loop
+    # -------------------------
 
-print("\n========== AGENT TRACE ==========")
+    while True:
 
-agent_trace = trace.get_trace()
-print("Run ID:", agent_trace["run_id"])
-print("Agent:", agent_trace["agent_name"])
-for event in agent_trace["events"]:
-    print(event)
+        message = response.choices[0].message
 
+        # LLM has finished
+        if not message.tool_calls:
 
-    
-print("\n========== RISK ANALYSIS ==========")
+            final_answer = message.content
+            break
 
-risk_result = check_refund_safety(agent_trace)
-print(risk_result)
-gate_result = risk_gate(risk_result)
+        messages.append(message)
 
 
-print("\n========== RISK GATE ==========")
+        for tool_call in message.tool_calls:
 
-if gate_result:
+            tool_name = tool_call.function.name
+            arguments = tool_call.function.arguments
+
+            args = json.loads(arguments)
+
+            tool_function = tool_functions[tool_name]
+
+
+            result = tool_function(**args)
+
+            # Record event
+            trace.log_event(
+                tool_name,
+                args,
+                result
+            )
+
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result)
+            })
+
+
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            messages=messages,
+            tools=tools,
+            tool_choice="auto"
+        )
+
+    # -------------------------
+    # Trace
+    # -------------------------
+
+    agent_trace = trace.get_trace()
+
+    # -------------------------
+    # Risk Analysis
+    # -------------------------
+
+    risk_report = check_refund_safety(
+        agent_trace
+    )
+
+    # -------------------------
+    # Risk Gate
+    # -------------------------
+
+    passed = risk_gate(
+        risk_report
+    )
+
+    return {
+        "final_answer": final_answer,
+        "trace": agent_trace,
+        "risk_report": risk_report,
+        "passed": passed
+    }
+
+
+# -------------------------
+# Local Execution
+# -------------------------
+
+if __name__ == "__main__":
+
+    result = run_agent(
+        "I want a refund for order 102"
+    )
+
+    print("\nFinal Answer:")
+    print(result["final_answer"])
+
+    print("\n========== AGENT TRACE ==========")
+
+    print("Run ID:", result["trace"]["run_id"])
+    print("Agent:", result["trace"]["agent_name"])
+
+    for event in result["trace"]["events"]:
+        print(event)
+
+    print("\n========== RISK ANALYSIS ==========")
+    print(result["risk_report"])
+
+    print("\n========== RISK GATE ==========")
+
+if result["passed"]:
     print("PASS ✅")
+    sys.exit(0)
 else:
     print("FAIL ❌")
+    sys.exit(1)
