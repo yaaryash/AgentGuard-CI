@@ -4,6 +4,7 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 from app.services.trace import AgentTrace
+from app.services.risk_engine import check_refund_safety
 from app.tools.refund_tools import (
     get_order,
     check_refund_policy,
@@ -193,9 +194,14 @@ while True:
 print("\n========== AGENT TRACE ==========")
 
 agent_trace = trace.get_trace()
-
 print("Run ID:", agent_trace["run_id"])
 print("Agent:", agent_trace["agent_name"])
-
 for event in agent_trace["events"]:
     print(event)
+
+
+    
+print("\n========== RISK ANALYSIS ==========")
+
+risk_result = check_refund_safety(agent_trace)
+print(risk_result)
