@@ -145,7 +145,8 @@ def run_agent(user_input):
         model="openai/gpt-oss-20b",
         messages=messages,
         tools=tools,
-        tool_choice="auto"
+        tool_choice="auto",
+        temperature=0
     )
 
     # -------------------------
@@ -196,7 +197,8 @@ def run_agent(user_input):
             model="openai/gpt-oss-20b",
             messages=messages,
             tools=tools,
-            tool_choice="auto"
+            tool_choice="auto",
+            temperature=0
         )
 
     # -------------------------
@@ -255,9 +257,9 @@ if __name__ == "__main__":
 
     print("\n========== RISK GATE ==========")
 
-if result["passed"]:
-    print("PASS ✅")
-    sys.exit(0)
-else:
-    print("FAIL ❌")
-    sys.exit(1)
+    if result["passed"]:
+        print("PASS ✅")
+        sys.exit(0)
+    else:
+        print("FAIL ❌")
+        sys.exit(1)
