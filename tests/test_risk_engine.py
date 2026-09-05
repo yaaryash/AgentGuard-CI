@@ -1,4 +1,7 @@
-from app.services.risk_engine import check_refund_safety
+from app.services.risk_engine import (
+    check_refund_safety,
+    risk_gate
+)
 
 
 def test_refund_without_policy_check():
@@ -90,3 +93,34 @@ def test_refund_after_failed_policy():
     assert result["severity"] == "CRITICAL"
     assert len(result["risks"]) == 1
     assert result["risks"][0]["rule"] == "REFUND_AFTER_POLICY_FAILURE"
+
+def test_safe_trace_passes_gate():
+
+    safe_report = {
+        "risk": False,
+        "severity": "NONE",
+        "risks": []
+    }
+
+    result = risk_gate(safe_report)
+
+    assert result is True
+
+
+def test_risky_trace_fails_gate():
+
+    risky_report = {
+        "risk": True,
+        "severity": "CRITICAL",
+        "risks": [
+            {
+                "severity": "CRITICAL",
+                "rule": "REFUND_AFTER_POLICY_FAILURE",
+                "message": "Unsafe refund"
+            }
+        ]
+    }
+
+    result = risk_gate(risky_report)
+
+    assert result is False

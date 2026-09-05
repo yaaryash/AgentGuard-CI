@@ -4,7 +4,10 @@ import json
 from dotenv import load_dotenv
 from groq import Groq
 from app.services.trace import AgentTrace
-from app.services.risk_engine import check_refund_safety
+from app.services.risk_engine import (
+    check_refund_safety,
+    risk_gate
+)
 from app.tools.refund_tools import (
     get_order,
     check_refund_policy,
@@ -205,3 +208,12 @@ print("\n========== RISK ANALYSIS ==========")
 
 risk_result = check_refund_safety(agent_trace)
 print(risk_result)
+gate_result = risk_gate(risk_result)
+
+
+print("\n========== RISK GATE ==========")
+
+if gate_result:
+    print("PASS ✅")
+else:
+    print("FAIL ❌")

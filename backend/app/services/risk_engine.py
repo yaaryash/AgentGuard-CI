@@ -95,3 +95,14 @@ def max_severity(risks):
             highest = severity
 
     return highest
+
+
+def risk_gate(risk_report):
+    """
+    Decide whether the agent execution should pass or fail.
+    """
+
+    if risk_report["risk"]:
+        return False
+
+    return True
